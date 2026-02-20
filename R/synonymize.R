@@ -30,7 +30,7 @@
 #'   \code{inputName} and \code{outputName}.
 #' @param synonym_sources Character vector giving the order of built-in synonym sources
 #'   to apply. Any of \code{"NatureServe"}, \code{"SEINet"}, \code{"USDA"}, \code{"WCVP"}.
-#' @param synonym_sources_rerun Logical. If TRUE, reload synonym sources (ex: with a new target checklist).
+#' @param synonym_sources_rerun Logical. If TRUE, reload synonym sources (ex: if using a new target checklist).
 #' @param fuzzy Logical. If TRUE, attempt exact and fuzzy matching using \pkg{rWCVP}. Results will be cross-checked against all other LUTs to match checklist.
 #' @param wcvp_rerun Logical. If TRUE, ignored cached \pkg{rWCVP} results and rerun. Note that you can pass saved LUTs from previous runs if desired in synonym_LUTs.
 #' @param ssp_mods Logical. If TRUE, perform a second pass using only binomial names
@@ -73,6 +73,44 @@ synonymize <- function(input_df,
                        ssp_mods = FALSE,
                        cross_check = TRUE) {
 
+  if (missing(checklist) || is.null(checklist)) {
+    message("No checklist supplied. Using NatureServe Network Tracheophyta checklist...")
+    checklist <- utils::read.csv(system.file("extdata", "NatureServe.csv", package = "synon"), stringsAsFactors = FALSE)
+    checklist_name_col <- "outputName"
+  }
+
+  if (ssp_mods){
+    checklist_df <- checklist %>%
+      dplyr::mutate(
+        binomial = stringr::word(.data[[checklist_name_col]], 1, 2)
+      )
+
+    # Count how many checklist names per binomial
+    binomial_counts <- checklist_df %>%
+      dplyr::count(binomial)
+
+    # Keep only binomials that have exactly 1 checklist name
+    unique_trinomials <- checklist_df %>%
+      dplyr::inner_join(
+        binomial_counts %>% dplyr::filter(n == 1),
+        by = "binomial"
+      ) %>%
+      dplyr::select(binomial, checklist_name = .data[[checklist_name_col]]) %>%
+      dplyr::filter(!binomial %in% checklist[[checklist_name_col]])
+
+    # add insert unique_trinomial binomial names into checklist
+    artificial_rows <- data.frame(
+      unique_trinomials$binomial,
+      stringsAsFactors = FALSE
+    )
+
+    colnames(artificial_rows) <- checklist_name_col
+
+    checklist <- dplyr::bind_rows(checklist, artificial_rows)
+
+    checklist <- append(checklist, unique_trinomials$binomial)
+    write.csv(checklist, "test_out.csv", row.names = FALSE)
+  }
 
   # -----------------------------------------
   # Load built in synonym sources
@@ -82,11 +120,11 @@ synonymize <- function(input_df,
     # Make sure cache exists
     if (!exists(".synon_cache", envir = .GlobalEnv)) {
       print("Creating .synon_cache")
-      assign(".bulkcat_cache", new.env(parent = emptyenv()), envir = .GlobalEnv)
+      assign(".synon_cache", new.env(parent = emptyenv()), envir = .GlobalEnv)
     }
 
     # Only load LUTs if not already in cache
-    if (!exists("builtin_LUTs", envir = .bulkcat_cache, inherits = FALSE) | synonym_sources_rerun) {
+    if (!exists("builtin_LUTs", envir = .synon_cache, inherits = FALSE) | synonym_sources_rerun) {
       LUTs <- list()
       for (source_name in sources) {
         lut_path <- switch(source_name,
@@ -104,6 +142,7 @@ synonymize <- function(input_df,
           if (source_name == "WCVP"){
             LUTs[["rWCVP"]] <- LUTs[[source_name]]
           }
+
           # Filter out trivial rows and keep only relevant names
           LUTs[[source_name]] <- LUTs[[source_name]] %>%
             dplyr::filter(
@@ -125,14 +164,15 @@ synonymize <- function(input_df,
           #write.csv(LUTs[[source_name]], paste0("filtered_built_ins_", source_name, ".csv"), row.names=FALSE)
         }
       }
-      assign("builtin_LUTs", LUTs, envir = .bulkcat_cache)
+      assign("builtin_LUTs", LUTs, envir = .synon_cache)
       cat("Saved builtin_LUTs to cache!\n")
     } else {
       cat("Using cached builtin_LUTs\n")
     }
 
-    return(.bulkcat_cache$builtin_LUTs)
+    return(.synon_cache$builtin_LUTs)
   }
+
   builtin_LUTs <- get_builtin_LUTs(synonym_sources, synonym_sources_rerun)
 
   # Validate user supplied LUTs
@@ -159,8 +199,6 @@ synonymize <- function(input_df,
     }
   }
 
-
-
   # ------------------------------------------
   # Create unique_df from input and initialize acceptedName and translationSource
   # ------------------------------------------
@@ -175,11 +213,7 @@ synonymize <- function(input_df,
     dplyr::rename(!!name_col := .data[[name_col]])
 
 
-  if (missing(checklist) || is.null(checklist)) {
-    message("No checklist supplied. Using NatureServe Network Tracheophyta checklist...")
-    checklist <- utils::read.csv(system.file("extdata", "NatureServe.csv", package = "BulkCAT"), stringsAsFactors = FALSE)
-    checklist_name_col <- "outputName"
-  }
+
 
   # ------------------------------------------
   # 2️⃣ Direct matches to checklist
@@ -312,12 +346,20 @@ synonymize <- function(input_df,
       }
     dir.create("rWCVP", showWarnings = FALSE)
 
-
-
-    query_df <- unique_df %>%
+    if (is_binomial){
+      query_df <- unique_df %>%
+        dplyr::filter(.data[[name_col]] != binomialName) %>%
+        dplyr::distinct(binomialName) %>%
+        dplyr::rename(query = binomialName)
+    }
+    else{
+      query_df <- unique_df %>%
         dplyr::filter(is.na(acceptedName)) %>%
         dplyr::distinct(.data[[name_col]]) %>%
         dplyr::rename(query = .data[[name_col]])
+    }
+
+
 
     if (nrow(query_df) == 0) {
       return(NA)
@@ -344,7 +386,7 @@ synonymize <- function(input_df,
       # ---------------------------------------
       # Build FUZZY LUT
       # ---------------------------------------
-      # Assume builtin_LUTs[["WCVP"]] exists and is preloaded
+      # Assume builtin_LUTs[["rWCVP"]] exists and is preloaded
       wcvp_fuzzy_LUT <- wcvp_matches %>%
         dplyr::left_join(
           builtin_LUTs[["rWCVP"]],
@@ -355,6 +397,7 @@ synonymize <- function(input_df,
         ) %>%
         dplyr::select(inputName, outputName) %>%
         dplyr::filter(inputName != outputName)
+
 
       # Ensure one output per inputName, preferring checklist matches
       wcvp_fuzzy_LUT <- wcvp_fuzzy_LUT %>%
@@ -428,7 +471,8 @@ synonymize <- function(input_df,
     print("############# Running WCVP cross check...")
     # first use cross check with WCVP to avoid unneccesary fuzzy matching
     source <- "WCVP"
-    unique_df <- set_cross_check(unique_df, builtin_LUTs[["rWCVP"]], source=source, name_col = name_col)
+    WCVP_master <- builtin_LUTs[["rWCVP"]] %>% dplyr::select(-accepted_plant_name_id)
+    unique_df <- set_cross_check(unique_df, WCVP_master, source=source, name_col = name_col)
     # run intermed_col output against all other LUTs
     intermed_col <- paste0(source, "_", name_col)
     unique_df <- run_synonyms(unique_df, intermed_col)
@@ -437,7 +481,7 @@ synonymize <- function(input_df,
     print("############# Running WCVP binomial cross check...")
     # first use cross check with WCVP to avoid unneccesary fuzzy matching
     source <- "WCVP"
-    unique_df <- set_cross_check(unique_df, builtin_LUTs[["rWCVP"]], source=source, name_col = "binomialName")
+    unique_df <- set_cross_check(unique_df, WCVP_master, source=source, name_col = "binomialName")
     # run intermed_col output against all other LUTs
     intermed_col <- paste0(source, "_", "binomialName")
     unique_df <- run_synonyms(unique_df, intermed_col)
@@ -462,7 +506,7 @@ synonymize <- function(input_df,
 
     if (ssp_mods) {
       print("############### Running rWCVP binomial")
-      rWCVP_lut <- wcvp_run(unique_df, name_col = "binomialName", rerun = wcvp_rerun, is_binomial = TRUE)
+      rWCVP_lut <- wcvp_run(unique_df, name_col = name_col, rerun = wcvp_rerun, is_binomial = TRUE)
       if (!(length(rWCVP_lut) == 1 && is.na(rWCVP_lut))) {
         source <- "rWCVP"
         unique_df <- process_LUT(rWCVP_lut, unique_df, checklist, source_name = "rWCVP_binomial", name_col = "binomialName")
@@ -475,6 +519,20 @@ synonymize <- function(input_df,
       }
     }
   }
+
+  # map unique_trinomial names from binomial
+  if (ssp_mods) {
+    unique_df <- unique_df %>%
+      dplyr::left_join(
+        unique_trinomials,
+        by = c("acceptedName" = "binomial")
+      ) %>%
+      dplyr::mutate(
+        acceptedName = dplyr::coalesce(checklist_name, acceptedName)
+      ) %>%
+      dplyr::select(-checklist_name)
+  }
+
 
   # apply translated names to the input_df
   output_df <- input_df %>% dplyr::left_join(unique_df, by = name_col)

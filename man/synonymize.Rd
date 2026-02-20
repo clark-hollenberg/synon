@@ -34,7 +34,7 @@ the built-in NatureServe Network tracheophyte checklist is used. This may contai
 \item{synonym_sources}{Character vector giving the order of built-in synonym sources
 to apply. Any of \code{"NatureServe"}, \code{"SEINet"}, \code{"USDA"}, \code{"WCVP"}.}
 
-\item{synonym_sources_rerun}{Logical. If TRUE, reload synonym sources (ex: with a new target checklist).}
+\item{synonym_sources_rerun}{Logical. If TRUE, reload synonym sources (ex: if using a new target checklist).}
 
 \item{fuzzy}{Logical. If TRUE, attempt exact and fuzzy matching using \pkg{rWCVP}. Results will be cross-checked against all other LUTs to match checklist.}
 
