@@ -73,6 +73,7 @@ synonymize <- function(input_df,
                        ssp_mods = FALSE,
                        cross_check = TRUE) {
 
+  # use default checklist if no checklist provided by user
   if (missing(checklist) || is.null(checklist)) {
     message("No checklist supplied. Using NatureServe Network Tracheophyta checklist...")
     checklist <- utils::read.csv(system.file("extdata", "NatureServe.csv", package = "synon"), stringsAsFactors = FALSE)
