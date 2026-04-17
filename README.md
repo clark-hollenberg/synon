@@ -51,7 +51,7 @@ You can install synon directly from GitHub using the `remotes` package:
 install.packages("remotes")
 
 # Install synon from GitHub
-remotes::install_github("chollenb-cnhp/synon")
+remotes::install_github("clark-hollenberg/synon")
 ```
 
 After installation, load the package:
@@ -78,15 +78,19 @@ devtools::install_github("matildabrown/rWCVP")
 ## Example usage:
 
 ```r
-translated_df <- synonymize(input_df,
-                       name_col = "scientificName",
-                       checklist = NA,                # usually a state or regional checklist maintained by a Natural Heritage Program. Otherwise, defaults to NatureServe global.
-                       checklist_name_col = "SNAME",
-                       synonym_LUTs = list(),       # custom user supplied synonym tables.
-                       synonym_sources = c("NatureServe", "SEINet", "USDA", "WCVP"),
-                       synonym_sources_rerun = FALSE,
-                       fuzzy = FALSE,
-                       wcvp_rerun = FALSE,
-                       ssp_mods = TRUE,
-                       cross_check = TRUE)
+translated_df <- synonymize(
+                input_df,
+                name_col = "scientificName",
+                checklist = NA,       
+                checklist_name_col = "SNAME",
+                synonym_LUTs = list(), 
+                synonym_sources = c("NatureServe", "SEINet", "USDA", "WCVP"),
+                synonym_sources_rerun = FALSE,
+                fuzzy = FALSE,
+                wcvp_rerun = FALSE,
+                ssp_mods_checklist = FALSE,
+                ssp_mods_input = FALSE,
+                cross_check = TRUE
+)               
+
 ```
