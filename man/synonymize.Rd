@@ -14,7 +14,8 @@ synonymize(
   synonym_sources_rerun = FALSE,
   fuzzy = FALSE,
   wcvp_rerun = FALSE,
-  ssp_mods = FALSE,
+  ssp_mods_checklist = FALSE,
+  ssp_mods_input = FALSE,
   cross_check = TRUE
 )
 }
@@ -40,8 +41,10 @@ to apply. Any of \code{"NatureServe"}, \code{"SEINet"}, \code{"USDA"}, \code{"WC
 
 \item{wcvp_rerun}{Logical. If TRUE, ignored cached \pkg{rWCVP} results and rerun. Note that you can pass saved LUTs from previous runs if desired in synonym_LUTs.}
 
-\item{ssp_mods}{Logical. If TRUE, perform a second pass using only binomial names
-(genus + species) for unresolved infraspecific names.}
+\item{ssp_mods_checklist}{Logical. If TRUE, consider singleton trinomial names in checklist as synonymous with their binomial (genus + species)}
+
+\item{ssp_mods_input}{Logical. If TRUE, perform a second pass using binomial names (genus + species) derived from the input
+for unresolved infraspecific input names.}
 
 \item{cross_check}{Logical. If TRUE, match WCVP names to checklist via other LUTs.}
 }

@@ -33,8 +33,9 @@
 #' @param synonym_sources_rerun Logical. If TRUE, reload synonym sources (ex: if using a new target checklist).
 #' @param fuzzy Logical. If TRUE, attempt exact and fuzzy matching using \pkg{rWCVP}. Results will be cross-checked against all other LUTs to match checklist.
 #' @param wcvp_rerun Logical. If TRUE, ignored cached \pkg{rWCVP} results and rerun. Note that you can pass saved LUTs from previous runs if desired in synonym_LUTs.
-#' @param ssp_mods Logical. If TRUE, perform a second pass using only binomial names
-#'   (genus + species) for unresolved infraspecific names.
+#' @param ssp_mods_checklist Logical. If TRUE, consider singleton trinomial names in checklist as synonymous with their binomial (genus + species)
+#' @param ssp_mods_input Logical. If TRUE, perform a second pass using binomial names (genus + species) derived from the input
+#'    for unresolved infraspecific input names.
 #' @param cross_check Logical. If TRUE, match WCVP names to checklist via other LUTs.
 #'
 #' @details
@@ -70,7 +71,8 @@ synonymize <- function(input_df,
                        synonym_sources_rerun = FALSE,
                        fuzzy = FALSE,
                        wcvp_rerun = FALSE,
-                       ssp_mods = FALSE,
+                       ssp_mods_checklist = FALSE,
+                       ssp_mods_input = FALSE,
                        cross_check = TRUE) {
 
   # use default checklist if no checklist provided by user
@@ -80,16 +82,20 @@ synonymize <- function(input_df,
     checklist_name_col <- "outputName"
   }
 
-  if (ssp_mods){
+  if (ssp_mods_checklist){
+    # add binomial column to checklist
     checklist_df <- checklist %>%
       dplyr::mutate(
         binomial = stringr::word(.data[[checklist_name_col]], 1, 2)
+      ) %>% dplyr::filter(
+        stringr::word(binomial, 2) != "x"
       )
 
     # Count how many checklist names per binomial
     binomial_counts <- checklist_df %>%
       dplyr::count(binomial)
 
+    # Identify trinomials that are not present in checklist as a binomial and there is only one trinomial
     # Keep only binomials that have exactly 1 checklist name
     unique_trinomials <- checklist_df %>%
       dplyr::inner_join(
@@ -108,9 +114,8 @@ synonymize <- function(input_df,
     colnames(artificial_rows) <- checklist_name_col
 
     checklist <- dplyr::bind_rows(checklist, artificial_rows)
-
-    checklist <- append(checklist, unique_trinomials$binomial)
-    write.csv(checklist, "test_out.csv", row.names = FALSE)
+    write.csv(checklist, "test.csv", row.names=FALSE)
+    write.csv(unique_trinomials, "test2.csv", row.names=FALSE)
   }
 
   # -----------------------------------------
@@ -125,7 +130,7 @@ synonymize <- function(input_df,
     }
 
     # Only load LUTs if not already in cache
-    if (!exists("builtin_LUTs", envir = .synon_cache, inherits = FALSE) | synonym_sources_rerun) {
+    if (!exists("builtin_LUTs", envir = .synon_cache, inherits = FALSE) || synonym_sources_rerun) {
       LUTs <- list()
       for (source_name in sources) {
         lut_path <- switch(source_name,
@@ -196,6 +201,9 @@ synonymize <- function(input_df,
       }
       else{
         synonym_LUTs[[i]] <- dplyr::select(LUT, inputName, outputName)
+        var_name <- deparse(substitute(synonym_LUTs[[i]]))
+        print(var_name)
+
       }
     }
   }
@@ -257,7 +265,6 @@ synonymize <- function(input_df,
           dplyr::select(-in_checklist)
 
         # 4️⃣ Join to main df
-
         df <- df %>%
           dplyr::left_join(LUT, by = setNames("inputName", name_col)) %>%
           dplyr::mutate(
@@ -285,6 +292,7 @@ synonymize <- function(input_df,
         source_name <- ifelse(i <= length(synonym_sources),
                               synonym_sources[i],
                               paste0("LUT", i))
+        print(source_name)
         unique_df <- process_LUT(LUT, unique_df, checklist, source_name, name_col)
       }
     }
@@ -316,9 +324,14 @@ synonymize <- function(input_df,
   unique_df <- run_synonyms(unique_df, name_col = name_col)
 
   # ------------------------------------------
-  # 5️⃣ Repeat the process for binomial names only (ssp_mods)
+  # 5️⃣ Repeat the process for binomial names only (ssp_mod_input)
   # ------------------------------------------
-  if (ssp_mods) {
+
+  # I need to think about how to handle this option separately.
+  # there is an issue with cartesian product. I don't always want to ssp mod on the input
+  # sometimes I just want ssp mod on the checklist
+
+  if (ssp_mods_input) {
     unique_df <- unique_df %>%
       dplyr::mutate(binomialName = stringr::word(.data[[name_col]], 1, 2))
 
@@ -444,6 +457,7 @@ synonymize <- function(input_df,
     return(unique_df)
   }
 
+  # function to match binomial of WCVP to unique_df
   bin_drop <- function(unique_df, name_col, drop_col){
 
     # compute binomial from drop_col (first two words)
@@ -477,16 +491,24 @@ synonymize <- function(input_df,
     # run intermed_col output against all other LUTs
     intermed_col <- paste0(source, "_", name_col)
     unique_df <- run_synonyms(unique_df, intermed_col)
-    unique_df <- bin_drop(unique_df, name_col, intermed_col)
+    if (ssp_mods_input){
+      unique_df <- bin_drop(unique_df, name_col, intermed_col)
+    }
+    # remove duplicates (there are multiple matches in rWCVP for one name if not using authorship)
+    unique_df <- unique_df %>% dplyr::distinct(.data[[name_col]], .keep_all=TRUE)
+
 
     print("############# Running WCVP binomial cross check...")
     # first use cross check with WCVP to avoid unneccesary fuzzy matching
+    if (ssp_mods_input){
     source <- "WCVP"
     unique_df <- set_cross_check(unique_df, WCVP_master, source=source, name_col = "binomialName")
     # run intermed_col output against all other LUTs
     intermed_col <- paste0(source, "_", "binomialName")
     unique_df <- run_synonyms(unique_df, intermed_col)
     unique_df <- bin_drop(unique_df, name_col, intermed_col)
+    unique_df <- unique_df %>% dplyr::distinct(.data[[name_col]], .keep_all=TRUE)
+    }
   }
 
 
@@ -505,7 +527,7 @@ synonymize <- function(input_df,
         unique_df <- bin_drop(unique_df, name_col, intermed_col)
     }
 
-    if (ssp_mods) {
+    if (ssp_mods_input) {
       print("############### Running rWCVP binomial")
       rWCVP_lut <- wcvp_run(unique_df, name_col = name_col, rerun = wcvp_rerun, is_binomial = TRUE)
       if (!(length(rWCVP_lut) == 1 && is.na(rWCVP_lut))) {
@@ -522,7 +544,7 @@ synonymize <- function(input_df,
   }
 
   # map unique_trinomial names from binomial
-  if (ssp_mods) {
+  if (ssp_mods_checklist) {
     unique_df <- unique_df %>%
       dplyr::left_join(
         unique_trinomials,
