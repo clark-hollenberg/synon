@@ -201,9 +201,6 @@ synonymize <- function(input_df,
       }
       else{
         synonym_LUTs[[i]] <- dplyr::select(LUT, inputName, outputName)
-        var_name <- deparse(substitute(synonym_LUTs[[i]]))
-        print(var_name)
-
       }
     }
   }
@@ -289,10 +286,7 @@ synonymize <- function(input_df,
 
       for (i in seq_along(synonym_LUTs)) {
         LUT <- synonym_LUTs[[i]]
-        source_name <- ifelse(i <= length(synonym_sources),
-                              synonym_sources[i],
-                              paste0("LUT", i))
-        print(source_name)
+        source_name <- paste0("User_LUT_", i)
         unique_df <- process_LUT(LUT, unique_df, checklist, source_name, name_col)
       }
     }
