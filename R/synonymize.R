@@ -24,7 +24,7 @@
 #' @param input_df A data frame containing taxon names to be standardized.
 #' @param name_col Name of the column in \code{input_df} containing scientific names.
 #' @param checklist Optional data frame of accepted names. If \code{NULL} or missing,
-#'   the built-in NatureServe Network tracheophyte checklist is used. This may contain names which are not correct in your region.
+#'   the built-in NatureServe Network tracheophyte checklist is used. This may contain names which are not appropriate in your region.
 #' @param checklist_name_col Column in \code{checklist} containing accepted names.
 #' @param synonym_LUTs Optional user-supplied data frame or list of data frames with columns
 #'   \code{inputName} and \code{outputName}.
@@ -34,8 +34,9 @@
 #' @param fuzzy Logical. If TRUE, attempt exact and fuzzy matching using \pkg{rWCVP}. Results will be cross-checked against all other LUTs to match checklist.
 #' @param wcvp_rerun Logical. If TRUE, ignored cached \pkg{rWCVP} results and rerun. Note that you can pass saved LUTs from previous runs if desired in synonym_LUTs.
 #' @param ssp_mods_checklist Logical. If TRUE, consider singleton trinomial names in checklist as synonymous with their binomial (genus + species)
+#'  Example: if Abies lasiocarpa var. arizonica in checklist, also add Abies lasiocarpa to checklist.
 #' @param ssp_mods_input Logical. If TRUE, perform a second pass using binomial names (genus + species) derived from the input
-#'    for unresolved infraspecific input names.
+#'    for unresolved infraspecific input names. Example: if Abies lasiocarpa var. unknownii in input data, try to find match with Abies lasiocarpa as input name.
 #' @param cross_check Logical. If TRUE, match WCVP names to checklist via other LUTs.
 #'
 #' @details
@@ -65,10 +66,10 @@
 synonymize <- function(input_df,
                        name_col = "scientificName",
                        checklist = NA,
-                       checklist_name_col = "SNAME",
+                       checklist_name_col = NA,
                        synonym_LUTs = list(),
                        synonym_sources = c("NatureServe", "SEINet", "USDA", "WCVP"),
-                       synonym_sources_rerun = FALSE,
+                       synonym_sources_rerun = TRUE,
                        fuzzy = FALSE,
                        wcvp_rerun = FALSE,
                        ssp_mods_checklist = FALSE,
@@ -114,14 +115,12 @@ synonymize <- function(input_df,
     colnames(artificial_rows) <- checklist_name_col
 
     checklist <- dplyr::bind_rows(checklist, artificial_rows)
-    write.csv(checklist, "test.csv", row.names=FALSE)
-    write.csv(unique_trinomials, "test2.csv", row.names=FALSE)
   }
 
   # -----------------------------------------
   # Load built in synonym sources
   # -----------------------------------------
-  get_builtin_LUTs <- function(sources, full_source = FALSE, synonym_sources_rerun = FALSE) {
+  get_builtin_LUTs <- function(sources, synonym_sources_rerun = FALSE) {
 
     # Make sure cache exists
     if (!exists(".synon_cache", envir = .GlobalEnv)) {
@@ -130,7 +129,7 @@ synonymize <- function(input_df,
     }
 
     # Only load LUTs if not already in cache
-    if (!exists("builtin_LUTs", envir = .synon_cache, inherits = FALSE) || synonym_sources_rerun) {
+    if ((!exists("builtin_LUTs", envir = .synon_cache, inherits = FALSE)) || synonym_sources_rerun) {
       LUTs <- list()
       for (source_name in sources) {
         lut_path <- switch(source_name,
@@ -222,7 +221,7 @@ synonymize <- function(input_df,
 
 
   # ------------------------------------------
-  # 2️⃣ Direct matches to checklist
+  # Direct matches to checklist
   # ------------------------------------------
     print("Finding direct matches to checklist...")
     direct_idx <- unique_df[[name_col]] %in% checklist[[checklist_name_col]]
@@ -231,7 +230,7 @@ synonymize <- function(input_df,
 
 
   # ------------------------------------------
-  # 3️⃣ Function to process one LUT
+  # Function to process one LUT
   # ------------------------------------------
     process_LUT <- function(LUT, df, checklist, source_name = "LUT", name_col = "scientificName") {
 
@@ -243,7 +242,7 @@ synonymize <- function(input_df,
               outputName %in% checklist[[checklist_name_col]]
           )
 
-        # 2️⃣ Swap input/output if inputName is in checklist
+        # Swap input/output if inputName is in checklist
         LUT <- LUT %>%
           dplyr::mutate(
             swap_flag = inputName %in% checklist[[checklist_name_col]],
@@ -253,7 +252,7 @@ synonymize <- function(input_df,
           ) %>%
           dplyr::select(-swap_flag, -input_orig)
 
-        # 3️⃣ Keep unique inputName, prioritizing outputName in checklist
+        # Keep unique inputName, prioritizing outputName in checklist
         LUT <- LUT %>%
           dplyr::mutate(in_checklist = outputName %in% checklist[[checklist_name_col]]) %>%
           dplyr::group_by(inputName) %>%
@@ -261,7 +260,7 @@ synonymize <- function(input_df,
           dplyr::ungroup() %>%
           dplyr::select(-in_checklist)
 
-        # 4️⃣ Join to main df
+        # Join to main df
         df <- df %>%
           dplyr::left_join(LUT, by = setNames("inputName", name_col)) %>%
           dplyr::mutate(
@@ -276,11 +275,11 @@ synonymize <- function(input_df,
     }
 
   # ------------------------------------------
-  # 4️⃣ Run synonyms function
+  # Run synonyms function
   # ------------------------------------------
   run_synonyms <- function(unique_df, name_col) {
 
-    # 4a apply user-provided LUTs in order
+    # apply user-provided LUTs in order
     print("Applying user supplied LUTs...")
     if (length(synonym_LUTs) > 0) {
 
@@ -291,7 +290,7 @@ synonymize <- function(input_df,
       }
     }
 
-    # 4b apply built-in LUTs (already loaded)
+    # apply built-in LUTs (already loaded)
     print("Applying built-in LUTs...")
 
     if (length(builtin_LUTs) > 0) {
@@ -318,7 +317,7 @@ synonymize <- function(input_df,
   unique_df <- run_synonyms(unique_df, name_col = name_col)
 
   # ------------------------------------------
-  # 5️⃣ Repeat the process for binomial names only (ssp_mod_input)
+  # Repeat the process for binomial names only (ssp_mod_input)
   # ------------------------------------------
 
   # I need to think about how to handle this option separately.
@@ -552,11 +551,18 @@ synonymize <- function(input_df,
 
 
   # apply translated names to the input_df
-  output_df <- input_df %>% dplyr::left_join(unique_df, by = name_col)
+  output_df <- input_df %>%
+    dplyr::left_join(unique_df, by = name_col)
+
+  unique_names <- sum(!is.na(unique_df$acceptedName))
+
+  message("Translation complete...")
+  message(
+    unique_names,
+    " out of ",
+    nrow(unique_df),
+    " total unique names were translated."
+  )
 
   return(output_df)
 }
-
-
-
-

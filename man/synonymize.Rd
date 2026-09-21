@@ -8,10 +8,10 @@ synonymize(
   input_df,
   name_col = "scientificName",
   checklist = NA,
-  checklist_name_col = "SNAME",
+  checklist_name_col = NA,
   synonym_LUTs = list(),
   synonym_sources = c("NatureServe", "SEINet", "USDA", "WCVP"),
-  synonym_sources_rerun = FALSE,
+  synonym_sources_rerun = TRUE,
   fuzzy = FALSE,
   wcvp_rerun = FALSE,
   ssp_mods_checklist = FALSE,
@@ -25,7 +25,7 @@ synonymize(
 \item{name_col}{Name of the column in \code{input_df} containing scientific names.}
 
 \item{checklist}{Optional data frame of accepted names. If \code{NULL} or missing,
-the built-in NatureServe Network tracheophyte checklist is used. This may contain names which are not correct in your region.}
+the built-in NatureServe Network tracheophyte checklist is used. This may contain names which are not appropriate in your region.}
 
 \item{checklist_name_col}{Column in \code{checklist} containing accepted names.}
 
@@ -41,10 +41,11 @@ to apply. Any of \code{"NatureServe"}, \code{"SEINet"}, \code{"USDA"}, \code{"WC
 
 \item{wcvp_rerun}{Logical. If TRUE, ignored cached \pkg{rWCVP} results and rerun. Note that you can pass saved LUTs from previous runs if desired in synonym_LUTs.}
 
-\item{ssp_mods_checklist}{Logical. If TRUE, consider singleton trinomial names in checklist as synonymous with their binomial (genus + species)}
+\item{ssp_mods_checklist}{Logical. If TRUE, consider singleton trinomial names in checklist as synonymous with their binomial (genus + species)
+Example: if Abies lasiocarpa var. arizonica in checklist, also add Abies lasiocarpa to checklist.}
 
 \item{ssp_mods_input}{Logical. If TRUE, perform a second pass using binomial names (genus + species) derived from the input
-for unresolved infraspecific input names.}
+for unresolved infraspecific input names. Example: if Abies lasiocarpa var. unknownii in input data, try to find match with Abies lasiocarpa as input name.}
 
 \item{cross_check}{Logical. If TRUE, match WCVP names to checklist via other LUTs.}
 }
