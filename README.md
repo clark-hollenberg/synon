@@ -8,7 +8,7 @@ It is designed for real-world taxonomic chaos: outdated names, inconsistent infr
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - Works with **large datasets** (tens to hundreds of thousands of names)
 - Supports **custom target checklists**
@@ -24,7 +24,7 @@ It is designed for real-world taxonomic chaos: outdated names, inconsistent infr
 
 ---
 
-## 📦 Built-in Synonym Sources
+## Built-in Synonym Sources
 
 `synon` ships with curated synonym lookup tables from:
 
@@ -42,7 +42,7 @@ Dataframes must have *inputName* and *outputName* columns
 
 ---
 
-## 🔧 Installation
+## Installation
 
 You can install synon directly from GitHub using the `remotes` package:
 
